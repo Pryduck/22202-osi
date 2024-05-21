@@ -1,0 +1,100 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+
+//рекурсивное выделение памяти на стеке
+void recursiveStackAllocation(int depth) {
+    char stackArray[4096];  // Выделяем 4096 байт на стеке
+    printf("Stack depth %d: address of stackArray = %p\n", depth, &stackArray);
+
+    if (depth > 0) {
+        sleep(1);  // Даем время для наблюдения изменений
+        recursiveStackAllocation(depth - 1);
+    }
+}
+
+void handle_sigsegv(int sig) {
+    printf("Caught signal %d (SIGSEGV)\n", sig);
+    exit(EXIT_FAILURE);
+}
+
+int main() {
+    printf("номер процесса %d\n", getpid());
+    sleep(30);
+    //выделение памяти на стеке
+    recursiveStackAllocation(10);
+
+
+    //цикл выделения памяти на куче
+    int size = 1024*1024;
+    int *array[20];
+    int i, s = 10;
+
+    // Выделение памяти для каждого элемента
+    for (i = 0; i < s; i++) {
+        array[i] = (int*) malloc(size);
+        printf("heap %d\n",i);
+        sleep(1);
+    }
+
+    // Освобождение памяти для каждого элемента
+    for (i = 0; i < s; i++) {
+        free(array[i]);
+    }
+
+
+     // Определение размера страницы
+    size_t pagesize = getpagesize();
+
+    // Размер выделяемой памяти: 10 страниц
+    size_t length = 10 * pagesize;
+
+    printf("+ 10 pages after 5 seconds\n");
+    sleep(5);
+
+    // Выделение памяти
+    char *region = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);//отобржение не резервируется ни в каком файле | неразд-е отражение, зпись не влияет на файл
+    if (region == MAP_FAILED) {
+        perror("mmap");
+        return 1;
+    }
+
+    printf("Memory allocated at %p\n", region);
+
+    // Вывод информации о страницах памяти
+    printf("Pagesize: %zu bytes\n", pagesize);
+    printf("Memory region starts from %p to %p\n", region, (char *)region + length - 1);
+
+/*
+    // изменяем права доступа и пробуем прочитать
+    mprotect(region, pagesize, PROT_NONE);
+    printf("Attempting to read from no-read region:\n");
+    signal(SIGSEGV, handle_sigsegv);
+    char read = region[0];  // SIGSEGV
+
+    // изменяем права доступа и пробуем написать
+    mprotect(region, pagesize, PROT_READ);
+    printf("Attempting to write to no-write region:\n");
+    region[0] = 'a';  // SIGSEGV
+*/
+    printf("- 4-6 pages seconds after 5 seconds\n");
+    sleep(5);
+    // отсоединяем страницы 4-6
+    if (munmap(region + 3 * pagesize, 3 * pagesize) == -1) {
+        perror("Failed to unmap memory");
+        return EXIT_FAILURE;
+    }
+
+    printf("Unmapped pages 4-6 successfully.\n");
+
+
+    sleep(1);
+
+    // освобождение памяти
+    munmap(region, pagesize * 10);
+
+    return 0;
+}
