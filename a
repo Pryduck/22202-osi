@@ -1,0 +1,53 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <stdlib.h>
+
+int global_var = 5;
+
+int main() {
+    int local_var = 10;
+    
+    printf("Адрес и содержимое глобальной переменной: %p = %d\n", &global_var, global_var);
+    printf("Адрес и содержимое локальной переменной: %p = %d\n", &local_var, local_var);
+    
+    printf("PID родительского процесса: %d\n", getpid());
+    
+    pid_t pid = fork();
+    
+    if (pid == -1) {
+        // Ошибка при создании процесса
+        perror("fork");
+        return 1;
+    } else if (pid == 0) {
+    
+        printf("PID дочернего процесса: %d, Parent PID: %d\n", getpid(), getppid());    
+        printf("Дочерний процесс: Адрес и содержимое глобальной переменной: %p = %d\n", &global_var, global_var);
+        printf("Дочерний процесс: Адрес и содержимое локальной переменной: %p = %d\n", &local_var, local_var);
+        
+        global_var += 2;
+        local_var += 2;
+        
+        printf("Дочерний процесс: Измененные значения: глобальная = %d, локальная = %d\n", global_var, local_var);
+        
+        exit(5);
+    } else {
+        // Код родительского процесса
+        sleep(30); // Ждем 30 секунд
+        printf("Родительский процесс: содержимое переменных: глобальная = %d, локальная = %d\n", global_var, local_var);
+        
+        int status;
+        waitpid(pid, &status, 0); // Ждем завершения дочернего процесса
+        
+        if (WIFEXITED(status)) {
+            printf("Дочерний процесс завершился с кодом %d\n", WEXITSTATUS(status));
+        }
+        
+        if (WIFSIGNALED(status)) {
+            printf("Дочерний процесс завершен по сигналу %d\n", WTERMSIG(status));
+        }
+    }
+    
+    return 0;
+}
