@@ -1,0 +1,23 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+int main() {
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        perror("fork");
+        return 1;
+    } else if (pid == 0) {
+        // дочерний
+        printf("Дочерний процесс: PID = %d, PPID = %d\n", getpid(), getppid());
+        sleep(10); 
+        printf("Дочерний процесс: PID = %d, новый PPID = %d\n", getpid(), getppid());
+    } else {
+        // родительский
+        printf("Родительский процесс: PID = %d\n", getpid());
+        exit(0); 
+    }
+
+    return 0;
+}
