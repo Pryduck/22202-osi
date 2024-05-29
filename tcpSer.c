@@ -1,35 +1,34 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <unistd.h>
-
 #include <sys/types.h>
-
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <sys/un.h>
 
-#define PORT 8888
+#define SOCKET_PATH "./socket"
 #define BUFFER_SIZE 1024
 
 int main(void) {
 	int serverFD, clientFD;
-	struct sockaddr_in serverAddr, clientAddr;
-	socklen_t client_len;
-	pid_t pid;
+	struct sockaddr_un serverAddr;
+	char buffer[BUFFER_SIZE];
 
-	serverFD = socket(AF_INET, SOCK_STREAM, 0);
+	serverFD = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (serverFD < 0) {
 		printf("socket() error\n");
 		return 1;
 	}
 
 	memset(&serverAddr, 0, sizeof(serverAddr));
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_addr.s_addr = INADDR_ANY;
-	serverAddr.sin_port = htons(PORT);
+	serverAddr.sun_family = AF_UNIX;
+	strcpy(serverAddr.sun_path, SOCKET_PATH);
 
+	unlink(SOCKET_PATH);
 	if (bind(serverFD, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
 		printf("bind() error\n");
+		close(serverFD);
 		return 1;
 	}
 
@@ -39,29 +38,30 @@ int main(void) {
 		return 1;
 	}
 
-	while (1) {
-		clientFD = accept(serverFD, (struct sockaddr*)&clientAddr, &sizeof(clientAddr));
+	pid_t pid;
+	do {
+		clientFD = accept(serverFD, NULL, NULL);
 		if (clientFD < 0) {
 			printf("accept() error\n");
-			continue;
-		}
-
-		pid = fork();
-		if (pid == 0) {
-			char buffer[BUFFER_SIZE];
-			ssize_t numRead;
-
-			while ((numRead = read(clientFD, buffer, BUFFER_SIZE)) > 0) {
-				printf("received: %s\n", buffer);
-				write(clientFD, buffer, numRead);
-			}
 			close(serverFD);
-			return 0;
+			return 1;
 		}
-		else {
-			close(clientFD);
-		}
+		pid = fork();
+	} while (pid != 0);
+
+	printf("connected\n");
+
+	ssize_t numRead;
+	while ((numRead = read(clientFD, buffer, BUFFER_SIZE)) > 0) {
+		write(clientFD, buffer, numRead);
 	}
+
+	printf("disconnected\n");
+
+	close(clientFD);
+
+	close(serverFD);
+	unlink(SOCKET_PATH);
 
 	return 0;
 }
