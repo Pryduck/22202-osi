@@ -1,57 +1,53 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <unistd.h>
-
 #include <sys/types.h>
-
 #include <sys/socket.h>
-#include <netinet/in.h>
-
-#include <arpa/inet.h>
-
-#define PORT 8888
+#include <sys/un.h>
+#define SOCKET_PATH "./socket"
 #define BUFFER_SIZE 1024
 
 int main(void) {
-	int socketFD;
-	struct sockaddr_in serverAddr;
-	char buffer[BUFFER_SIZE];
+	int serverFD;
+	struct sockaddr_un serverAddr;
+	char buffer[BUFFER_SIZE + 1];
 
-	socketFD = socket(AF_INET, SOCK_STREAM, 0);//TCP
-	if (socketFD < 0) {
-		printf("socket() error\n");
+	serverFD = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (serverFD < 0) {
+		printf("serverFDet() error\n");
 		return 1;
 	}
 
 	memset(&serverAddr, 0, sizeof(serverAddr));
-	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(PORT);
-	if (inet_pton(AF_INET, "127.0.0.1", &serverAddr.sin_addr) <= 0) {//свой IP
-		perror("inet_pton");
-		close(socketFD);
-		exit(EXIT_FAILURE);
-	}
+	serverAddr.sun_family = AF_UNIX;
+	strcpy(serverAddr.sun_path, SOCKET_PATH);
 
-	if (connect(socketFD, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0) {
-		printf("connect() error\n");
+	if (connect(serverFD, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+		printf("%s%s\n", "connect() error: ", strerror(errno));
+		close(serverFD);
 		return 1;
 	}
 
 	while (fgets(buffer, BUFFER_SIZE, stdin) != NULL) {
-		write(socketFD, buffer, strlen(buffer));
+		if (write(serverFD, buffer, strlen(buffer)) < 0) {
+			printf("%s%s\n", "write() error: ", strerror(errno));
+			sleep(1);
+			continue;
+		}
 
-		ssize_t numRead = read(socketFD, buffer, BUFFER_SIZE);
+		ssize_t numRead = read(serverFD, buffer, BUFFER_SIZE);
 		if (numRead < 0) {
-			printf("read() error\n");
-			close(socketFD);
-			return 1;
+			printf("%s%s\n", "read() error: ", strerror(errno));
+			sleep(1);
+			continue;
 		}
 
 		buffer[numRead] = '\0';
-		printf("received: %s\n", buffer);
+		printf("response: %s", buffer);
 	}
 
-	close(socketFD);
+	close(serverFD);
 	return 0;
 }
